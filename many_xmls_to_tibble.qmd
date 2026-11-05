@@ -5,6 +5,9 @@ format: html
 
 This was written with the help of Microsoft CoPilot, the code was comprehended and edited by me, Ruth Williamson, and I take full responsibility for the use and product.
 
+Edited to take xml files from University of Washington pilot samples
+
+
 insert libraries
 --------------------------------------------
 ```{r}
@@ -72,7 +75,7 @@ extract_metadata <- function(path) {
 
   # ---- sample type ----
   sample_type <- case_when(
-    str_detect(sample_dir, "^p\\d+")    ~ "sample", #Looks for samples if they have pump info
+    str_detect(sample_dir, "_pg?\\d+")    ~ "sample", #Looks for samples if they have pump info
     str_detect(sample_dir, "^blk")      ~ "blk", #labels blanks by looking for something with "blk" in the name
     str_detect(sample_dir, "^control") ~ "control", #looks for controls if they are labeled "control"
     TRUE ~ NA_character_
@@ -81,18 +84,18 @@ extract_metadata <- function(path) {
   # ---- shared metadata ----
   pump <- if_else(
     sample_type == "sample",
-    str_extract(sample_dir, "p\\d+"),
+    str_extract(sample_dir, "pg?\\d+"),
     NA_character_
   )
 
-   time = if_else(
+   brand = if_else(
       sample_type %in% c("sample", "control"),
-      str_extract(sample_dir, "(?<=_)\\d{3,4}(?=_)|(?<=_)\\d{3,4}$"),
+      str_extract(sample_dir, "^[^_]+"),
       NA_character_
       )
+   
 #edit these for your own specific variables you want to keep track of   
-  location <- str_extract(project_dir, "como|forest|field")
-  season   <- str_extract(project_dir, "spring|summer|fall|winter")
+  location <- str_extract(sample_dir, "urban|forest")
   year     <- str_extract(project_dir, "\\d{4}")
   mix      <- str_extract(xml_name, "mix\\d+")
   blk_num <- str_extract(sample_dir, "blk_\\d+")
@@ -101,29 +104,23 @@ extract_metadata <- function(path) {
   sample_ID <- case_when(
 
     sample_type == "sample" ~ str_c(
-      "sample", pump, time, location, season, year, mix,
+      "sample", pump, brand, location, year, mix,
       sep = "_"
     ),
 
     sample_type == "control" ~ str_c(
-      "control", time, location, season, year, mix,
+      "control", brand, location, year, mix,
       sep = "_"
     ),
 
-    sample_type == "blk" ~ str_c(
-      blk_num, location, season, year, mix,
-      sep = "_"
-    ),
     TRUE ~ NA_character_)
 
   tibble(
     project   = project_dir,
     type      = sample_type,
     pump      = pump,
-    blk_num   = blk_num,
-    time      = time,
+    brand     = brand,
     location  = location,
-    season    = season,
     year      = year,
     mix       = mix,
     sample_ID = sample_ID
@@ -199,7 +196,7 @@ put file here
 
 ```{r}
 phytoncide_dat <- read_all_xmls( #put the name of your data table here
-  root_dir = "phytoncide_collection_data_raw_xmls/", #put your data file you want to read in here
+  root_dir = "xml_files/test_october_2026/", #put your data file you want to read in here
   col_types = compound_types) |> 
   clean_names() |> #cleans column names
   mutate(peak_name = peak_name |>
@@ -213,7 +210,7 @@ glimpse(phytoncide_dat)
 ------------------------------------------
 Write ya CSV out!
 ```{r}
-#write_csv(phytoncide_dat, "phytoncide_dat") #uncomment this line when you are ready to get your csv
+write_csv(phytoncide_dat, "phytoncide_dat") #uncomment this line when you are ready to get your csv
 ```
 
 -------------------------------------------

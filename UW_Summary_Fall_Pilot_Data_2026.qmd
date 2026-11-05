@@ -1,5 +1,251 @@
 ---
 title: "UW_Summary_Fall_Pilot_Data_2026"
-format: html
+date: 'Last updated: `r Sys.Date()`'
+author: "Ruth Williamson, Slayer of Data and Scurge of the Analysis"
+format: 
+  html:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    embed-resources: true
 ---
+
+# Read Me!
+
+> brief read me here <
+
+## **In Brief**
+
+> Put summary in words here <
+
+# **Data Import and Cleaning**    
+
+### Load in libraries :)
+```{r}
+library(tidyverse)
+library(cowplot)
+library(readxl)
+theme_set(theme_cowplot())
+library(factoextra)
+library(wesanderson)
+library(gt)
+library(openxlsx)
+library(nlme)
+library(lmtest)
+library(AICcmodavg)
+library(lattice)
+library(chemhelper) #for retention index calculations
+library(janitor)
+library(snakecase)
+pal <- wes_palette(name = "Zissou1")
+```
+
+### Read in the data!
+```{r}
+phyto_dat <- read.csv("phytoncide_dat")
+
+phyto_dat$brand <- factor(phyto_dat$brand)
+phyto_dat$location <- factor(phyto_dat$location)
+
+glimpse(phyto_dat)
+
+pump_dat <- read_xlsx("uw_test_field_sheet_oct_2026.xlsx", sheet = "tidy") |>
+  select(c(location, pump, cubic_m))
+glimpse(pump_dat)
+```
+
+#Joining on the shared columns
+```{r}
+dat_joined <- left_join(phyto_dat, pump_dat, by=join_by(pump,location)) 
+#joined on the shared columns
+
+glimpse(dat_joined)
+```
+
+#correcting concentrations with volume
+```{r}
+dat <- dat_joined |>
+  mutate(conc_ngcm = amount/cubic_m,
+         conc_ugcm = conc_ngcm/1000)
+```
+
+#calculating LOD
+```{r}
+compound_info <- read_xlsx("compound_summary_table_info_2024.xlsx") |>
+  mutate(lod = (3*concentration_ion)/(ion_signal/ion_noise),
+         loq = (10*concentration_ion)/(ion_signal/ion_noise),
+         lod_old = (3*concentration)/(signal/noise),
+         loq_old = (10*concentration)/(signal/noise))
+
+#the old LOD/LOQ was done in undergrad and I have gone through it again to make sure I understand it now and have adjusted it with how I would do it now since I have learned more.
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| tbl-cap: "LOD/LOQ of Compounds"
+
+lodq <- compound_info |>
+  subset(select = c(name, lod, loq))
+
+lodq |>
+  gt() |>
+  tab_header(title = "LOD/LOQ of Compounds") |>
+  cols_label(name = "Compound",
+             lod = "LOD",
+             loq = "LOQ") |>
+  fmt_number(columns = c(lod, loq),
+             decimals = 3)|>
+  opt_row_striping()
+```
+
+# Retention Index Calculations
+
+Retention indexes are calcuated by using the retention time of alkanes that proceed directly before and after the compound.The equation is as follows
+
+> Ix = 100n + 100(tx-tn) / (tn+1 − tn)
+
+The package I would like to use for this is: chemhelper by Eric R. Scott
+
+To cite package ‘chemhelper’ in publications use:
+
+Scott E (2023). chemhelper: Helper Functions For Dealing With GCMS and LCMS data from IonAnalytics. R package version 0.0.0.9000, https://github.com/aariq/chemhelper.
+
+
+Getting just the retention times and compound names from the compound info table. These retention times are what the method used to find the compounds:
+```{r}
+xrt <- compound_info |>
+  subset(select = c(name, rt)) |>
+  mutate(name = to_snake_case(name)) #converting names to snakecase
+
+nrt <- read_xlsx("Alkane_RT.xlsx") # reading in alkane rt info
+
+xrt <- xrt|>
+  mutate(ri = calc_RI(rt, nrt$rt, nrt$carbon_num)) 
+
+#so now xrt has the RI calculations for our compounds
+```
+
+# trimming the tibble so I have less anxiety looking at it
+```{r}
+dat_smol <- dat |>
+  select(type, pump, brand, location, sample_id, peak_name, retention_time, amount, peak_area, conc_ugcm, conc_ngcm) |>
+  unite(id, pump, brand, location, sep = "_", remove = FALSE)
+```
+
+# General visualization of data
+```{r}
+dat_sum <- dat_smol |>
+  group_by(brand, location, type, peak_name) |>
+  summarise(conc_mean = mean(conc_ugcm),
+            conc_stdv = sd(conc_ugcm),
+            n = n()
+            )
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| tbl-cap: "General Summary Table"
+
+dat_sum |>
+  filter_out(type == "control") |>
+  filter_out(conc_mean == 0) |>
+  gt() |>
+  tab_header(title = "General Summary (ug/m^3)")|>
+  fmt_number(columns = c(conc_mean, conc_stdv),
+             decimals = 3)|>
+  opt_row_striping()
+```
+
+# Comparing forest SKC and Gilair
+```{r}
+forest_comp <- dat_smol|>
+  filter(location == "forest") |>
+  filter_out(type == "control") |>
+  ggplot(aes(x = forcats::fct_reorder(peak_name, conc_ugcm, median),
+    y = conc_ugcm,
+    fill = brand)) +
+  geom_point(alpha = 0.5, size = 1) +
+  geom_boxplot() +
+  theme( axis.text.x = element_text(
+    angle = 90)) +
+  labs(title = "Comparing gilair and skc in Forest",
+       x = "Compound Name",
+       y = "Concentration (ug/m^3)")
+
+forest_comp
+```
+
+# Comparing city skc and gilair
+```{r}
+city_comp <- dat_smol|>
+  filter(location == "urban") |>
+  filter_out(type == "control") |>
+  ggplot(aes(x = forcats::fct_reorder(peak_name, conc_ugcm, median),
+    y = conc_ugcm,
+    fill = brand)) +
+  geom_point(alpha = 0.5, size = 1) +
+  geom_boxplot() +
+  theme( axis.text.x = element_text(
+    angle = 90)) +
+  labs(title = "Comparing gilair and skc in Urban",
+       x = "Compound Name",
+       y = "Concentration (ug/m^3)")
+
+city_comp
+```
+
+# Pooling both skc and gilair to get an idea of forest vs urban
+```{r}
+location_comp <- dat_smol |>
+  filter(type != "control") |>
+  ggplot(aes(x = forcats::fct_reorder(peak_name, conc_ugcm, median),
+    y = conc_ugcm,
+    fill = location)) +
+  geom_point(alpha = 0.5, size = 1) +
+  geom_boxplot(outlier.shape = NA) +
+  theme( axis.text.x = element_text(
+    angle = 90)) +
+  labs(title = "Comparing locations",
+       x = "Compound Name",
+       y = "Concentration (ug/m^3)")
+
+location_comp
+```
+
+# Trying a quick heatmap???
+```{r}
+heat_map <- dat_smol |>
+  filter(type != "control") |>
+  ggplot(aes(id, forcats::fct_reorder(peak_name, conc_ugcm, mean), fill = log10(conc_ugcm + 0.001))) +
+  geom_tile() +
+    scale_fill_viridis_c(
+    option = "magma",
+    direction = 1,
+    name = "log10(conc)"
+  ) +
+   theme( axis.text.x = element_text(
+    angle = 45, )) +
+    labs(title = "Heatmap",
+    x = "Sample",
+    y = "Compound")
+
+heat_map
+```
+
+# export for metaboanalyst
+```{r}
+uw_metabo <- dat_smol |>
+  filter(type != "control") |>
+  select(location, peak_name, id, conc_ugcm) |>
+  pivot_wider(names_from = peak_name, values_from = conc_ugcm)
+
+write.xlsx(uw_metabo, "uw_metabo_1.xlsx")
+ 
+  
+```
+
 
