@@ -241,11 +241,63 @@ heat_map
 uw_metabo <- dat_smol |>
   filter(type != "control") |>
   select(location, peak_name, id, conc_ugcm) |>
-  pivot_wider(names_from = peak_name, values_from = conc_ugcm)
+  pivot_wider(names_from = peak_name, values_from = conc_ugcm) |>
+  select(id, everything())
 
-write.xlsx(uw_metabo, "uw_metabo_1.xlsx")
- 
+write.csv(uw_metabo, "uw_metabo_1.csv")
   
 ```
 
+- This was placed into metaboanalyst
+
+Student's T-test using raw p value of 0.05
+significant: 
+beta-myrcene (higher in forest)
+beta-pinene (higher in forest)
+alpha-pinene (higher in forest)
+fenchone (higher in urban)
+
+However none of these are significant within the FDR range.
+
+```{r}
+t_test_results <- read.csv("t_test_of_UW_forestcity.csv")
+
+print(t_test_results)
+```
+
+-PCA Plot
+```{r}
+knitr::include_graphics("pca_score2d_0_dpi300.png")
+```
+
+```{r}
+knitr::include_graphics("pca_biplot_0_dpi300.png")
+```
+-PLSDA Plot
+
+```{r}
+knitr::include_graphics("pls_imp_0_dpi300.png")
+```
+
+```{r}
+knitr::include_graphics("pls_score2d_0_dpi300.png")
+```
+
+```{r}
+knitr::include_graphics("pls_biplot_0_dpi300.png")
+```
+
+- Heatmap
+
+Un-averaged and organized to have forest on one side and city on the other
+
+```{r}
+knitr::include_graphics("heatmap_2_dpi300.png")
+```
+
+Grouped by average
+
+```{r}
+knitr::include_graphics("heatmap_6_dpi300.png")
+```
 
